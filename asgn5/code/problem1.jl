@@ -1,8 +1,8 @@
 using Images
 using PyPlot
 using LightGraphs
-using GraphPlot
-#using GaussianMixtures
+#using GraphPlot
+using GaussianMixtures
 
 function fit_colors(img, fgmask, k)
 
