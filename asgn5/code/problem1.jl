@@ -4,8 +4,16 @@ using LightGraphs
 #using GraphPlot
 using GaussianMixtures
 
-function fit_colors(img, fgmask, k)
+function load_image()
+    img = PyPlot.imread("../data/img_1.jpg")
+    img = convert(Array{Float64,3}, img)
+    return img::Array{Float64,3}
+end
 
+function fit_colors(img, fgmask, k)
+  fg_gmm = GMM(k, img[fgmask .== true])
+  bg_gmm = GMM(k, img[fgmask .== false])
+  return [fg_gmm, bg_gmm]
 end
 
 function data_term(img, fgm, bgm, s, t)
