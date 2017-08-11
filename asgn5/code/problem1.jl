@@ -4,55 +4,98 @@ using LightGraphs
 #using GraphPlot
 using GaussianMixtures
 
-function load_image()
+function load_images()
     img = PyPlot.imread("../data/img_1.jpg")
     img = convert(Array{Float64,3}, img)
-    return img::Array{Float64,3}
+    mask = PyPlot.imread("../data/img_1_mask.png")
+    return img, mask
 end
 
 function fit_colors(img, fgmask, k)
-  fg_gmm = GMM(k, img[fgmask .== true])
-  bg_gmm = GMM(k, img[fgmask .== false])
+  fg_pxl_r = img[:,:,1]
+  fg_pxl_g = img[:,:,2]
+  fg_pxl_b = img[:,:,3]
+  bg_pxl_r = img[:,:,1]
+  bg_pxl_g = img[:,:,2]
+  bg_pxl_b = img[:,:,3]
+  fg_pxl=[[fg_pxl_r[i],fg_pxl_g[i],fg_pxl_b[i]] for i in 1:length(fgmask) if fgmask[i]>0.0]
+  bg_pxl=[[bg_pxl_r[i],bg_pxl_g[i],bg_pxl_b[i]] for i in 1:length(fgmask) if fgmask[i]==0.0]
+  fg = zeros(Float64, length(fg_pxl), 3)
+  for i in 1:length(fg_pxl)
+    fg[i,1]=fg_pxl[i][1]
+    fg[i,2]=fg_pxl[i][2]
+    fg[i,3]=fg_pxl[i][3]
+  end
+  bg = zeros(Float64, length(fg_pxl), 3)
+  for i in 1:length(bg_pxl)
+    bg[i,1]=bg_pxl[i][1]
+    bg[i,2]=bg_pxl[i][2]
+    bg[i,3]=bg_pxl[i][3]
+  end
+  fg_gmm = GMM(k, fg)
+  bg_gmm = GMM(k, bg)
   return [fg_gmm, bg_gmm]
 end
 
 function data_term(img, fgm, bgm, s, t)
+  h = size(img,1)
+  w = size(img,2)
+  num_pixels = h*w
+  source_weights = zeros(num_pixels)
+  target_weights = zeros(num_pixels)
+  for i in 1:num_pixels
+    r,c = ind2sub((h,w),i)
+    target_weights[i] = -avll(fgm, transpose(img[r,c,:][:,:]))
+    source_weights[i] = -avll(bgm, transpose(img[r,c,:][:,:]))
+  end
+  s_and_t = [fill(s,num_pixels); fill(t,num_pixels)]
+  pixel_indices = collect(1:num_pixels)
+  pixel_indices = [pixel_indices; pixel_indices]
+  weights = [source_weights; target_weights]
+  return sparse(s_and_t, pixel_indices, weights)
 end
 
 function contrast_weights(img, edges)
   number_of_edges = size(edges,1)
   beta = 0
   weights = zeros(number_of_edges)
+  h = size(img,1)
+  w = size(img,2)
   for i in 1:number_of_edges
-    beta += (img[edges[i,1]] - img[edges[i,2]])^2
+    r1, c1 = ind2sub((h,w),edges[i,1])
+    r2, c2 = ind2sub((h,w),edges[i,2])
+    beta += sum((img[r1,c1,:] - img[r2,c2,:]).^2)
   end
 
   beta = 1/(beta * 1/number_of_edges)
 
   for i in 1:number_of_edges
-  weights[i] = exp(-beta * (img[edges[i,1]] - img[edges[i,2]]))^2
+    r1, c1 = ind2sub((h,w),edges[i,1])
+    r2, c2 = ind2sub((h,w),edges[i,2])
+    weights[i] = exp(-beta * sum((img[r1,c1,:] - img[r2,c2,:]).^2))
   end
 
   return weights
 end
 
 function make_edges(h,w)
-  edges = Vector{Array{Int64,2}}()
+  edges = zeros(Int64, 2*(w-1)*(h-1) + w + h - 2, 2)
   @assert h > 1 && w > 1
   s = (h,w)
+  idx = 1
   for j in 1:w
     for i in 1:h
       if j < w
-        push!(edges, [sub2ind(s,i,j) sub2ind(s,i,j+1)])
+        edges[idx,:] = [sub2ind(s,i,j) sub2ind(s,i,j+1)]
+        idx += 1
       end
       if i < h
-        push!(edges, [sub2ind(s,i,j) sub2ind(s,i+1,j)])
+        edges[idx,:] = [sub2ind(s,i,j) sub2ind(s,i+1,j)]
+        idx += 1
       end
     end
   end
-  E = edges[1]
-  E = map(e -> E = vcat(E, e), edges[2:end])[end]
-  return E
+  return edges
 end
 
 function make_graph(h,w)
