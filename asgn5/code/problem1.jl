@@ -7,8 +7,8 @@ using GaussianMixtures
 function load_images()
     img = PyPlot.imread("../data/img_1.jpg")
     img = convert(Array{Float64,3}, img)
-    mask = PyPlot.imread("../data/img_1_mask.png")
-    return img, mask
+    #mask = PyPlot.imread("../data/img_1_mask.png")
+    return img#, mask
 end
 
 function fit_colors(img, fgmask, k)
@@ -100,21 +100,21 @@ end
 
 function make_graph(h,w)
   E = make_edges(h,w)
+  edges = copy(E)
   number_of_nodes = h*w
   number_of_nodes += 1
-  source_index = number_of_nodes
+  s = number_of_nodes
   number_of_nodes += 1
-  target_index = number_of_nodes
-  #=for i in 1:number_of_nodes-2
-    E = vcat(E, [source_index i])
-    E = vcat(E, [target_index i])
-  end=#
-  G = Graph(number_of_nodes-2)
-  # = Graph(number_of_nodes)
+  t = number_of_nodes
+  for i in 1:number_of_nodes-2
+    E = vcat(E, [s i])
+    E = vcat(E, [t i])
+  end
+  G = Graph(number_of_nodes)
   for i in 1:size(E,1)
     add_edge!(G, E[i,1], E[i,2])
   end
-  return G, E, s, t
+  return G, edges, s, t
 end
 
 function smoothness_term(edges, W, lambda, hw)
@@ -123,9 +123,28 @@ function smoothness_term(edges, W, lambda, hw)
 end
 
 function iterated_graphcut(img, bbox, lambda, k)
+  mask = zeros(Float64, size(img[:,:,1]))
+  mask[bbox[1]:bbox[1]+bbox[2],bbox[3]:bbox[3]+bbox[4]].=1.0
+  h, w = size(img[:,:,1])
+  G, E, source, target = make_graph(h, w)
+  weights = contrast_weights(img, E)
+  S = smoothness_term(E, weights, lambda, h*w)
+  for i in 1:1
+    fgm, bgm = fit_colors(img, mask, 5)
+    D = data_term(img, fgm, bgm, source, target)
+    _, _, labels = maximum_flow(G, source, target, [S; D], algorithm=BoykovKolmogorovAlgorithm())
+    display(labels)
+
+  end
 end
 
-
+function problem1()
+  img =load_images()
+  bbox = [11, 156, 44, 156]
+  k = 5.0
+  lamda = 10.0
+  seg = iterated_graphcut(img, bbox, lamda, k)
+end
 
 #imshow(iterated_graphcut(img, bbox, 10, 5);
 #title("Final Segmentation");
