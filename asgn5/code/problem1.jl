@@ -2,6 +2,7 @@ using Images
 using PyPlot
 using LightGraphs
 using GaussianMixtures
+using JLD
 
 #Authors: Nicolas Acero, Sebastian Ehmes
 
@@ -9,6 +10,18 @@ function load_images()
     img = PyPlot.imread("../data/img_1.jpg")
     img = convert(Array{Float64,3}, img)
     return img
+end
+
+function display_bounding_box(img, bbox, thickness)
+  img_box = copy(img)
+  img_box[bbox[1]:bbox[1]+thickness, bbox[3]:bbox[3]+bbox[4], 1] = 255.0
+  img_box[bbox[1]+bbox[2]-thickness:bbox[1]+bbox[2], bbox[3]:bbox[3]+bbox[4], 1] = 255.0
+  img_box[bbox[1]:bbox[1]+bbox[2], bbox[3]:bbox[3]+thickness, 1] = 255.0
+  img_box[bbox[1]:bbox[1]+bbox[2], bbox[3]+bbox[4]-thickness:bbox[3]+bbox[4], 1] = 255.0
+  figure()
+  axis("off")
+  title("Initial foreground annotation")
+  imshow(1/maximum(img_box) * img_box)
 end
 
 function fit_colors(img, fgmask, k)
@@ -26,7 +39,7 @@ function fit_colors(img, fgmask, k)
     fg[i,2]=fg_pxl[i][2]
     fg[i,3]=fg_pxl[i][3]
   end
-  bg = zeros(Float64, length(fg_pxl), 3)
+  bg = zeros(Float64, length(bg_pxl), 3)
   for i in 1:length(bg_pxl)
     bg[i,1]=bg_pxl[i][1]
     bg[i,2]=bg_pxl[i][2]
@@ -134,7 +147,8 @@ function iterated_graphcut(img, bbox, lambda, k)
   G, E, source, target = make_graph(h, w)
   weights = contrast_weights(img, E)
   S = smoothness_term(E, weights, lambda, h*w+2)
-  for i in 1:1
+  #mask = JLD.load("../results/segmentation_at_iteration_9.jld", "seg_9")
+  for i in 1:10
     fgm, bgm = fit_colors(img, mask, 5)
     D = data_term(img, fgm, bgm, source, target)
     capacity_matrix = [S[1:end-2,:]; D[end-1:end,:]]
@@ -143,9 +157,26 @@ function iterated_graphcut(img, bbox, lambda, k)
     mask = reshape(labels[1:end-2],h,w)
     mask[mask .== 2] = 0.0
     mask[mask .== 1] = 1.0
+    #JLD.save("../results/segmentation_at_iteration_10.jld", "seg_10", mask)
     figure()
+    axis("off")
     title("Segmentation at iteration Nr. $i")
     imshow(mask)
+    img_and_seg = zeros(size(img))
+    for j in 1:size(mask,2)
+      for k in 1:size(mask,1)
+        if mask[k,j] == 1.0
+          img_and_seg[k,j,2] = 255.0
+        else
+          img_and_seg[k,j,1] = 255.0
+        end
+      end
+    end
+    img_and_seg = 0.6*img + 0.4*img_and_seg
+    figure()
+    axis("off")
+    title("Segmentation at iteration Nr. $i, blended with the test image")
+    imshow(1/maximum(img_and_seg) * img_and_seg)
   end
   return mask
 end
@@ -153,10 +184,12 @@ end
 function problem1()
   img = load_images()
   bbox = [11, 156, 44, 156]
+  display_bounding_box(img, bbox, 1)
   k = 5.0
   lamda = 10.0
   seg = iterated_graphcut(img, bbox, lamda, k)
   figure()
+  axis("off")
   title("Final Segmentation")
   imshow(seg)
   img_and_seg = zeros(size(img))
@@ -171,8 +204,9 @@ function problem1()
   end
   img_and_seg = 0.6*img + 0.4*img_and_seg
   figure()
+  axis("off")
   title("Final segmentation blended with the test image")
-  imshow(img_and_seg)
+  imshow(1/maximum(img_and_seg) * img_and_seg)
 end
 
 problem1()
