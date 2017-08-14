@@ -1,14 +1,14 @@
 using Images
 using PyPlot
 using LightGraphs
-#using GraphPlot
 using GaussianMixtures
+
+#Authors: Nicolas Acero, Sebastian Ehmes
 
 function load_images()
     img = PyPlot.imread("../data/img_1.jpg")
     img = convert(Array{Float64,3}, img)
-    #mask = PyPlot.imread("../data/img_1_mask.png")
-    return img#, mask
+    return img
 end
 
 function fit_colors(img, fgmask, k)
@@ -52,7 +52,7 @@ function data_term(img, fgm, bgm, s, t)
   pixel_indices = collect(1:num_pixels)
   pixel_indices = [pixel_indices; pixel_indices]
   weights = [source_weights; target_weights]
-  return sparse(s_and_t, pixel_indices, weights)
+  return sparse(s_and_t, pixel_indices, weights, num_pixels+2, num_pixels+2)
 end
 
 function contrast_weights(img, edges)
@@ -102,15 +102,18 @@ function make_graph(h,w)
   E = make_edges(h,w)
   edges = copy(E)
   number_of_nodes = h*w
-  number_of_nodes += 1
-  s = number_of_nodes
-  number_of_nodes += 1
-  t = number_of_nodes
-  for i in 1:number_of_nodes-2
-    E = vcat(E, [s i])
-    E = vcat(E, [t i])
+  extention = zeros(Int, 2*number_of_nodes,2)
+  E = [E; extention]
+  px_indices = collect(1:number_of_nodes)
+  s = number_of_nodes + 1
+  t = s+1
+  px_idx = 1
+  for i in size(edges,1)+1:2:size(E,1)
+    E[i,:]= [s px_idx]
+    E[i+1,:] = [px_idx t]
+    px_idx += 1
   end
-  G = Graph(number_of_nodes)
+  G = DiGraph(number_of_nodes+2)
   for i in 1:size(E,1)
     add_edge!(G, E[i,1], E[i,2])
   end
@@ -119,7 +122,9 @@ end
 
 function smoothness_term(edges, W, lambda, hw)
   smoothness_weights = lambda * W
-  return sparse(edges[:,1], edges[:,2], smoothness_weights, hw, hw)
+  E = copy(edges)
+  E = [E; [E[:,2] E[:,1]]]
+  return sparse(E[:,1], E[:,2], [smoothness_weights; smoothness_weights], hw, hw)
 end
 
 function iterated_graphcut(img, bbox, lambda, k)
@@ -128,23 +133,32 @@ function iterated_graphcut(img, bbox, lambda, k)
   h, w = size(img[:,:,1])
   G, E, source, target = make_graph(h, w)
   weights = contrast_weights(img, E)
-  S = smoothness_term(E, weights, lambda, h*w)
-  for i in 1:1
+  S = smoothness_term(E, weights, lambda, h*w+2)
+  for i in 1:10
     fgm, bgm = fit_colors(img, mask, 5)
     D = data_term(img, fgm, bgm, source, target)
-    _, _, labels = maximum_flow(G, source, target, [S; D], algorithm=BoykovKolmogorovAlgorithm())
-    display(labels)
-
+    capacity_matrix = [S[1:end-2,:]; D[end-1:end,:]]
+    capacity_matrix[:,end-1:end] = transpose(capacity_matrix[end-1:end,:])
+    _, _, labels = maximum_flow(G, source, target, capacity_matrix, algorithm=BoykovKolmogorovAlgorithm())
+    mask = reshape(labels[1:end-2],h,w)
+    mask[mask .== 2] = 0.0
+    mask[mask .== 1] = 1.0
+    figure()
+    title("Segmentation at iteration Nr. $i")
+    imshow(mask)
   end
+  return mask
 end
 
 function problem1()
-  img =load_images()
+  img = load_images()
   bbox = [11, 156, 44, 156]
   k = 5.0
   lamda = 10.0
   seg = iterated_graphcut(img, bbox, lamda, k)
+  figure()
+  imshow(seg)
+  title("Final Segmentation")
 end
 
-#imshow(iterated_graphcut(img, bbox, 10, 5);
-#title("Final Segmentation");
+problem1()
