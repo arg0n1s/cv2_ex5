@@ -134,7 +134,7 @@ function iterated_graphcut(img, bbox, lambda, k)
   G, E, source, target = make_graph(h, w)
   weights = contrast_weights(img, E)
   S = smoothness_term(E, weights, lambda, h*w+2)
-  for i in 1:10
+  for i in 1:1
     fgm, bgm = fit_colors(img, mask, 5)
     D = data_term(img, fgm, bgm, source, target)
     capacity_matrix = [S[1:end-2,:]; D[end-1:end,:]]
@@ -157,8 +157,22 @@ function problem1()
   lamda = 10.0
   seg = iterated_graphcut(img, bbox, lamda, k)
   figure()
-  imshow(seg)
   title("Final Segmentation")
+  imshow(seg)
+  img_and_seg = zeros(size(img))
+  for j in 1:size(seg,2)
+    for i in 1:size(seg,1)
+      if seg[i,j] == 1.0
+        img_and_seg[i,j,2] = 255.0
+      else
+        img_and_seg[i,j,1] = 255.0
+      end
+    end
+  end
+  img_and_seg = 0.6*img + 0.4*img_and_seg
+  figure()
+  title("Final segmentation blended with the test image")
+  imshow(img_and_seg)
 end
 
 problem1()
